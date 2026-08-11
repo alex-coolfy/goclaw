@@ -222,7 +222,7 @@ func (c *Channel) handleMessage(ev *slackevents.MessageEvent) {
 	// Build final content with group history context
 	finalContent := content
 	if peerKind == "group" {
-		annotated := fmt.Sprintf("[From: %s]\n%s", displayName, content)
+		annotated := fromHeader(displayName, c.isBotMentioned(ev.Text)) + "\n" + content
 		if c.HistoryLimit() > 0 {
 			// Collect media from pending history (files downloaded by earlier non-mentioned messages).
 			if histMediaPaths := c.GroupHistory().CollectMedia(localKey); len(histMediaPaths) > 0 {
@@ -279,7 +279,7 @@ func (c *Channel) fetchThreadParentContext(ctx context.Context, channelID, threa
 		ChannelID: channelID,
 		Latest:    threadTS,
 		Limit:     1,
-		Inclusive:  true,
+		Inclusive: true,
 	}
 	history, err := c.api.GetConversationHistoryContext(ctx, params)
 	if err != nil || len(history.Messages) == 0 {

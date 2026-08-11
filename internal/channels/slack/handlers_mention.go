@@ -79,7 +79,7 @@ func (c *Channel) handleAppMention(ev *slackevents.AppMentionEvent) {
 		c.placeholders.Store(localKey, placeholderTS)
 	}
 
-	annotated := fmt.Sprintf("[From: %s]\n%s", displayName, content)
+	annotated := fromHeader(displayName, true) + "\n" + content
 	finalContent := annotated
 	if c.HistoryLimit() > 0 {
 		finalContent = c.GroupHistory().BuildContext(localKey, annotated, c.HistoryLimit())
@@ -112,6 +112,19 @@ func (c *Channel) handleAppMention(ev *slackevents.AppMentionEvent) {
 // isBotMentioned checks if the message text contains <@botUserID>.
 func (c *Channel) isBotMentioned(text string) bool {
 	return strings.Contains(text, "<@"+c.botUserID+">")
+}
+
+// fromHeader builds the "[From: ...]" annotation prepended to group messages.
+// When the sender explicitly @mentioned the bot, the header says so — the
+// mention tag itself is stripped from the delivered text, so this marker is
+// the model's only reliable signal that the message was addressed to it
+// (otherwise a message like "@bot @colleague help" arrives as "@colleague
+// help" and reads as someone else's conversation).
+func fromHeader(displayName string, mentioned bool) string {
+	if mentioned {
+		return fmt.Sprintf("[From: %s — @mentioned you]", displayName)
+	}
+	return fmt.Sprintf("[From: %s]", displayName)
 }
 
 // shouldRespondInGroup reports whether a channel message may trigger the agent

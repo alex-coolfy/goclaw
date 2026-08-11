@@ -129,6 +129,17 @@ func TestShouldRespondInGroupEvictsStaleParticipation(t *testing.T) {
 	}
 }
 
+// --- fromHeader: explicit-mention marker in the group annotation ---
+
+func TestFromHeader(t *testing.T) {
+	if got := fromHeader("Alex", true); got != "[From: Alex — @mentioned you]" {
+		t.Errorf("fromHeader mentioned = %q", got)
+	}
+	if got := fromHeader("Alex", false); got != "[From: Alex]" {
+		t.Errorf("fromHeader not mentioned = %q", got)
+	}
+}
+
 // --- resolveDisplayName cache ---
 
 func TestResolveDisplayNameCacheHit(t *testing.T) {
