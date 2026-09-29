@@ -341,6 +341,44 @@ func TestAnthropicAdapterFromResponse_ToolCalls(t *testing.T) {
 	}
 }
 
+func TestAnthropicAdapterFromResponse_EmptyThinkingFieldPreserved(t *testing.T) {
+	adapter, _ := NewAnthropicAdapter(ProviderConfig{APIKey: "sk-test"})
+
+	respJSON := `{
+		"content": [
+			{"type": "thinking", "thinking": "", "signature": "sig-empty"},
+			{"type": "tool_use", "id": "toolu_01", "name": "heartbeat_ok", "input": {}}
+		],
+		"stop_reason": "tool_use",
+		"usage": {"input_tokens": 10, "output_tokens": 5}
+	}`
+
+	resp, err := adapter.FromResponse([]byte(respJSON))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.RawAssistantContent == nil {
+		t.Fatal("expected RawAssistantContent for tool passback")
+	}
+	var blocks []map[string]any
+	if err := json.Unmarshal(resp.RawAssistantContent, &blocks); err != nil {
+		t.Fatal(err)
+	}
+	if len(blocks) != 2 {
+		t.Fatalf("blocks = %d, want 2", len(blocks))
+	}
+	thinking, ok := blocks[0]["thinking"]
+	if !ok {
+		t.Fatal("thinking field was dropped; Anthropic requires it even when empty")
+	}
+	if thinking != "" {
+		t.Errorf("thinking = %v, want empty string", thinking)
+	}
+	if blocks[0]["signature"] != "sig-empty" {
+		t.Errorf("signature = %v, want sig-empty", blocks[0]["signature"])
+	}
+}
+
 func TestAnthropicAdapterFromResponse_ThinkingBlocks(t *testing.T) {
 	adapter, _ := NewAnthropicAdapter(ProviderConfig{APIKey: "sk-test"})
 

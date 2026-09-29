@@ -73,7 +73,9 @@ func (a *AnthropicAdapter) FromResponse(data []byte) (*ChatResponse, error) {
 	if err := json.Unmarshal(data, &resp); err != nil {
 		return nil, fmt.Errorf("anthropic adapter: decode: %w", err)
 	}
-	return a.provider.parseResponse(&resp), nil
+	result := a.provider.parseResponse(&resp)
+	preserveAnthropicToolContent(result, data)
+	return result, nil
 }
 
 // FromStreamChunk parses a single Anthropic SSE event payload.
