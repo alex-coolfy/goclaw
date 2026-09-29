@@ -321,7 +321,10 @@ func anthropicUsesAdaptiveThinking(model string) bool {
 		}
 		minorPart, _, _ := strings.Cut(afterMajor, "-")
 		minor, err := strconv.Atoi(minorPart)
-		if err == nil && minor >= 7 {
+		// Dated snapshots such as claude-sonnet-4-20250514 put an 8-digit
+		// date in this position. Those are pre-4.5 models and still use
+		// manual thinking.
+		if err == nil && minor >= 7 && minor < 100 {
 			return true
 		}
 	}

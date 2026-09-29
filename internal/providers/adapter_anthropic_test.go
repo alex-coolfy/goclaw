@@ -272,6 +272,41 @@ func TestAnthropicAdapterToRequest_AdaptiveThinkingOmitsDisplayWhenStripped(t *t
 	}
 }
 
+func TestAnthropicAdapterToRequest_DatedSonnet4KeepsManualThinking(t *testing.T) {
+	adapter, _ := NewAnthropicAdapter(ProviderConfig{APIKey: "sk-test"})
+
+	req := ChatRequest{
+		Model:    "claude-sonnet-4-20250514",
+		Messages: []Message{{Role: "user", Content: "Think about this"}},
+		Options:  map[string]any{OptThinkingLevel: "high"},
+	}
+	data, headers, err := adapter.ToRequest(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if headers.Get("anthropic-beta") == "" {
+		t.Error("manual thinking should send the interleaved-thinking beta header")
+	}
+	var body map[string]any
+	if err := json.Unmarshal(data, &body); err != nil {
+		t.Fatal(err)
+	}
+	thinking, ok := body["thinking"].(map[string]any)
+	if !ok {
+		t.Fatal("expected thinking config in body")
+	}
+	if thinking["type"] != "enabled" {
+		t.Errorf("thinking type = %v, want enabled", thinking["type"])
+	}
+	if _, hasDisplay := thinking["display"]; hasDisplay {
+		t.Errorf("manual thinking should not set display, got %v", thinking["display"])
+	}
+	budget, _ := thinking["budget_tokens"].(float64)
+	if int(budget) != 32000 {
+		t.Errorf("thinking budget = %v, want 32000", budget)
+	}
+}
+
 func TestAnthropicAdapterFromResponse_ToolCalls(t *testing.T) {
 	adapter, _ := NewAnthropicAdapter(ProviderConfig{APIKey: "sk-test"})
 
