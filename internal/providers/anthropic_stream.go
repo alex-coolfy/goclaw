@@ -45,6 +45,7 @@ func (p *AnthropicProvider) ChatStream(ctx context.Context, req ChatRequest, onC
 	// own signature for tool-loop passback.
 	var blockThinking strings.Builder
 	var blockSignature strings.Builder
+	var redactedData string
 
 	sse := NewSSEScanner(cb)
 	for sse.Next() {
@@ -72,6 +73,7 @@ func (p *AnthropicProvider) ChatStream(ctx context.Context, req ChatRequest, onC
 			if err := json.Unmarshal([]byte(data), &ev); err == nil {
 				blockThinking.Reset()
 				blockSignature.Reset()
+				redactedData = ev.ContentBlock.Data
 				currentBlockType = ev.ContentBlock.Type
 				if ev.ContentBlock.Type == "tool_use" {
 					result.ToolCalls = append(result.ToolCalls, ToolCall{
@@ -119,7 +121,7 @@ func (p *AnthropicProvider) ChatStream(ctx context.Context, req ChatRequest, onC
 			// Reconstruct the complete content block for RawAssistantContent
 			if len(rawContentBlocks) > 0 {
 				idx := len(rawContentBlocks) - 1
-				block := p.buildRawBlock(currentBlockType, result, toolCallJSON, blockThinking.String(), blockSignature.String())
+				block := p.buildRawBlock(currentBlockType, result, toolCallJSON, blockThinking.String(), blockSignature.String(), redactedData)
 				if block != nil {
 					rawContentBlocks[idx] = block
 				}

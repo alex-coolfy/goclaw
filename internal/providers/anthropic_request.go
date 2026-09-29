@@ -35,7 +35,7 @@ func splitSystemPromptForCache(content string) []map[string]any {
 
 // buildRawBlock reconstructs a complete content block from streaming data.
 // This is needed to preserve thinking blocks (with signatures) for tool use passback.
-func (p *AnthropicProvider) buildRawBlock(blockType string, result *ChatResponse, toolCallJSON map[int]string, thinkingText, thinkingSignature string) json.RawMessage {
+func (p *AnthropicProvider) buildRawBlock(blockType string, result *ChatResponse, toolCallJSON map[int]string, thinkingText, thinkingSignature, redactedData string) json.RawMessage {
 	switch blockType {
 	case "thinking":
 		block := map[string]any{
@@ -77,9 +77,14 @@ func (p *AnthropicProvider) buildRawBlock(blockType string, result *ChatResponse
 			}
 		}
 	case "redacted_thinking":
-		// Pass through as-is (we don't have the encrypted data in streaming)
+		// The encrypted payload arrives on content_block_start and must be
+		// replayed unchanged. A block with only "type" is rejected on the
+		// next tool-result request.
 		block := map[string]any{
 			"type": "redacted_thinking",
+		}
+		if redactedData != "" {
+			block["data"] = redactedData
 		}
 		if b, err := json.Marshal(block); err == nil {
 			return b

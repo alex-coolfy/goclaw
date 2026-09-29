@@ -246,3 +246,58 @@ func TestStreamChat_ThinkingSignaturePassback(t *testing.T) {
 		t.Errorf("signature = %v, want sig-abc", blocks[0]["signature"])
 	}
 }
+
+func TestStreamChat_RedactedThinkingPassback(t *testing.T) {
+	events := []string{
+		"event: message_start\n",
+		`data: {"message":{"usage":{"input_tokens":10}}}` + "\n\n",
+
+		"event: content_block_start\n",
+		`data: {"index":0,"content_block":{"type":"redacted_thinking","data":"encrypted-blob"}}` + "\n\n",
+
+		"event: content_block_stop\n",
+		"data: {}\n\n",
+
+		"event: content_block_start\n",
+		`data: {"index":1,"content_block":{"type":"tool_use","id":"toolu_01","name":"web_search"}}` + "\n\n",
+
+		"event: content_block_delta\n",
+		`data: {"index":1,"delta":{"type":"input_json_delta","partial_json":"{\"q\":\"x\"}"}}` + "\n\n",
+
+		"event: content_block_stop\n",
+		"data: {}\n\n",
+
+		"event: message_delta\n",
+		`data: {"delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":8}}` + "\n\n",
+
+		"event: message_stop\n",
+		"data: {}\n\n",
+	}
+	server := newAnthropicSSEServer(t, events)
+	p := newTestAnthropicProvider(server.URL)
+
+	result, err := p.ChatStream(context.Background(), ChatRequest{
+		Model:    "claude-sonnet-5-5",
+		Messages: []Message{{Role: "user", Content: "hello"}},
+	}, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.RawAssistantContent == nil {
+		t.Fatal("expected RawAssistantContent for tool passback")
+	}
+
+	var blocks []map[string]any
+	if err := json.Unmarshal(result.RawAssistantContent, &blocks); err != nil {
+		t.Fatalf("decode RawAssistantContent: %v", err)
+	}
+	if len(blocks) != 2 {
+		t.Fatalf("blocks = %d, want 2", len(blocks))
+	}
+	if blocks[0]["type"] != "redacted_thinking" {
+		t.Fatalf("block 0 type = %v, want redacted_thinking", blocks[0]["type"])
+	}
+	if blocks[0]["data"] != "encrypted-blob" {
+		t.Errorf("data = %v, want encrypted-blob", blocks[0]["data"])
+	}
+}
