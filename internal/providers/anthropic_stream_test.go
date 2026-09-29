@@ -2,6 +2,7 @@ package providers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -173,5 +174,75 @@ func TestStreamChat_ThinkingSignature(t *testing.T) {
 	}
 	if result.Content != "answer" {
 		t.Errorf("Content = %q, want %q", result.Content, "answer")
+	}
+}
+
+// TestStreamChat_ThinkingSignaturePassback verifies that a streamed thinking
+// block keeps its signature in RawAssistantContent. Tool-loop follow-ups send
+// that block back, and Anthropic rejects it when the signature is missing.
+func TestStreamChat_ThinkingSignaturePassback(t *testing.T) {
+	events := []string{
+		"event: message_start\n",
+		`data: {"message":{"usage":{"input_tokens":10}}}` + "\n\n",
+
+		"event: content_block_start\n",
+		`data: {"index":0,"content_block":{"type":"thinking","thinking":""}}` + "\n\n",
+
+		"event: content_block_delta\n",
+		`data: {"index":0,"delta":{"type":"thinking_delta","thinking":"plan the call"}}` + "\n\n",
+
+		"event: content_block_delta\n",
+		`data: {"index":0,"delta":{"type":"signature_delta","signature":"sig-abc"}}` + "\n\n",
+
+		"event: content_block_stop\n",
+		"data: {}\n\n",
+
+		"event: content_block_start\n",
+		`data: {"index":1,"content_block":{"type":"tool_use","id":"toolu_01","name":"web_search"}}` + "\n\n",
+
+		"event: content_block_delta\n",
+		`data: {"index":1,"delta":{"type":"input_json_delta","partial_json":"{\"q\":\"x\"}"}}` + "\n\n",
+
+		"event: content_block_stop\n",
+		"data: {}\n\n",
+
+		"event: message_delta\n",
+		`data: {"delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":20}}` + "\n\n",
+
+		"event: message_stop\n",
+		"data: {}\n\n",
+	}
+	server := newAnthropicSSEServer(t, events)
+	p := newTestAnthropicProvider(server.URL)
+
+	result, err := p.ChatStream(context.Background(), ChatRequest{
+		Model:    "claude-sonnet-5-5",
+		Messages: []Message{{Role: "user", Content: "hello"}},
+	}, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result.ToolCalls) != 1 {
+		t.Fatalf("ToolCalls = %d, want 1", len(result.ToolCalls))
+	}
+	if result.RawAssistantContent == nil {
+		t.Fatal("expected RawAssistantContent for tool passback")
+	}
+
+	var blocks []map[string]any
+	if err := json.Unmarshal(result.RawAssistantContent, &blocks); err != nil {
+		t.Fatalf("decode RawAssistantContent: %v", err)
+	}
+	if len(blocks) != 2 {
+		t.Fatalf("blocks = %d, want 2", len(blocks))
+	}
+	if blocks[0]["type"] != "thinking" {
+		t.Fatalf("block 0 type = %v, want thinking", blocks[0]["type"])
+	}
+	if blocks[0]["thinking"] != "plan the call" {
+		t.Errorf("thinking = %v, want plan the call", blocks[0]["thinking"])
+	}
+	if blocks[0]["signature"] != "sig-abc" {
+		t.Errorf("signature = %v, want sig-abc", blocks[0]["signature"])
 	}
 }

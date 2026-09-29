@@ -229,6 +229,9 @@ func TestAnthropicAdapterToRequest_AdaptiveThinkingForSonnet55(t *testing.T) {
 	if thinking["type"] != "adaptive" {
 		t.Errorf("thinking type = %v, want adaptive", thinking["type"])
 	}
+	if thinking["display"] != "summarized" {
+		t.Errorf("thinking display = %v, want summarized", thinking["display"])
+	}
 	if _, hasBudget := thinking["budget_tokens"]; hasBudget {
 		t.Error("adaptive thinking should not set budget_tokens")
 	}
@@ -238,6 +241,34 @@ func TestAnthropicAdapterToRequest_AdaptiveThinkingForSonnet55(t *testing.T) {
 	}
 	if _, hasTemp := body["temperature"]; hasTemp {
 		t.Error("temperature should be omitted for claude-sonnet-5-5")
+	}
+}
+
+func TestAnthropicAdapterToRequest_AdaptiveThinkingOmitsDisplayWhenStripped(t *testing.T) {
+	adapter, _ := NewAnthropicAdapter(ProviderConfig{APIKey: "sk-test"})
+
+	req := ChatRequest{
+		Model:    "claude-sonnet-5-5",
+		Messages: []Message{{Role: "user", Content: "Think about this"}},
+		Options: map[string]any{
+			OptThinkingLevel: "high",
+			OptStripThinking: true,
+		},
+	}
+	data, _, err := adapter.ToRequest(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(data, &body); err != nil {
+		t.Fatal(err)
+	}
+	thinking, ok := body["thinking"].(map[string]any)
+	if !ok {
+		t.Fatal("expected thinking config in body")
+	}
+	if thinking["display"] != "omitted" {
+		t.Errorf("thinking display = %v, want omitted", thinking["display"])
 	}
 }
 

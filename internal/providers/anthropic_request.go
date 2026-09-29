@@ -35,15 +35,15 @@ func splitSystemPromptForCache(content string) []map[string]any {
 
 // buildRawBlock reconstructs a complete content block from streaming data.
 // This is needed to preserve thinking blocks (with signatures) for tool use passback.
-func (p *AnthropicProvider) buildRawBlock(blockType string, result *ChatResponse, toolCallJSON map[int]string, _ int) json.RawMessage {
+func (p *AnthropicProvider) buildRawBlock(blockType string, result *ChatResponse, toolCallJSON map[int]string, thinkingText, thinkingSignature string) json.RawMessage {
 	switch blockType {
 	case "thinking":
 		block := map[string]any{
 			"type":     "thinking",
-			"thinking": result.Thinking,
+			"thinking": thinkingText,
 		}
-		if result.ThinkingSignature != "" {
-			block["signature"] = result.ThinkingSignature
+		if thinkingSignature != "" {
+			block["signature"] = thinkingSignature
 		}
 		if b, err := json.Marshal(block); err == nil {
 			return b
@@ -226,7 +226,18 @@ func (p *AnthropicProvider) buildRequestBody(model string, req ChatRequest, stre
 	if level, ok := req.Options[OptThinkingLevel].(string); ok && level != "" && level != "off" {
 		delete(body, "temperature")
 		if anthropicUsesAdaptiveThinking(model) {
-			body["thinking"] = map[string]any{"type": "adaptive"}
+			// display defaults to "omitted" on these models, which hides thinking
+			// text. "summarized" keeps the reasoning visible. OptStripThinking
+			// asks for the omitted form; the signature is still returned for
+			// tool-loop passback.
+			display := "summarized"
+			if strip, _ := req.Options[OptStripThinking].(bool); strip {
+				display = "omitted"
+			}
+			body["thinking"] = map[string]any{
+				"type":    "adaptive",
+				"display": display,
+			}
 			body["output_config"] = map[string]any{"effort": anthropicEffort(level)}
 			if maxTok, ok := body["max_tokens"].(int); !ok || maxTok < 16000 {
 				body["max_tokens"] = 16000
