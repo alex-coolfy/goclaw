@@ -58,8 +58,9 @@ func (a *AnthropicAdapter) ToRequest(req ChatRequest) ([]byte, http.Header, erro
 	h.Set("x-api-key", a.provider.apiKey)
 	h.Set("anthropic-version", anthropicAPIVersion)
 
-	// Add beta header for interleaved thinking
-	if _, hasThinking := body["thinking"]; hasThinking {
+	// Legacy manual thinking still needs the interleaved-thinking beta header.
+	// Adaptive thinking (Claude 4.7+ / Claude 5) does not.
+	if anthropicManualThinking(body) {
 		h.Set("anthropic-beta", "interleaved-thinking-2025-05-14")
 	}
 
@@ -98,8 +99,8 @@ func (a *AnthropicAdapter) FromStreamChunk(data []byte) (*StreamChunk, error) {
 			return &StreamChunk{Content: ev.Delta.Text}, nil
 		case "thinking_delta":
 			return &StreamChunk{Thinking: ev.Delta.Thinking}, nil
-		// input_json_delta and signature_delta are stateful (accumulate across chunks).
-		// Pipeline must track these externally; adapter only handles atomic deltas.
+			// input_json_delta and signature_delta are stateful (accumulate across chunks).
+			// Pipeline must track these externally; adapter only handles atomic deltas.
 		}
 
 	case "message_stop":

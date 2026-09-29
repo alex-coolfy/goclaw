@@ -50,7 +50,7 @@ type AnthropicProvider struct {
 	client       *http.Client
 	retryConfig  RetryConfig
 	middlewares  RequestMiddleware // composed middleware chain (nil = no-op)
-	registry     ModelRegistry    // model resolution registry (nil = skip)
+	registry     ModelRegistry     // model resolution registry (nil = skip)
 }
 
 // NewAnthropicProvider creates a new Anthropic provider.
@@ -178,11 +178,10 @@ func (p *AnthropicProvider) doRequest(ctx context.Context, body any) (io.ReadClo
 	httpReq.Header.Set("x-api-key", p.apiKey)
 	httpReq.Header.Set("anthropic-version", anthropicAPIVersion)
 
-	// Add beta header for interleaved thinking when thinking is enabled
-	if bodyMap, ok := body.(map[string]any); ok {
-		if _, hasThinking := bodyMap["thinking"]; hasThinking {
-			httpReq.Header.Set("anthropic-beta", "interleaved-thinking-2025-05-14")
-		}
+	// Legacy manual thinking still needs the interleaved-thinking beta header.
+	// Adaptive thinking (Claude 4.7+ / Claude 5) does not.
+	if bodyMap, ok := body.(map[string]any); ok && anthropicManualThinking(bodyMap) {
+		httpReq.Header.Set("anthropic-beta", "interleaved-thinking-2025-05-14")
 	}
 
 	resp, err := p.client.Do(httpReq)

@@ -159,6 +159,7 @@ func TestAnthropicAdapterToRequest_SkipsTemperatureForClaude46AndNewer(t *testin
 		"claude-opus-4-7-20260501",
 		"claude-opus-5",
 		"claude-sonnet-5",
+		"claude-sonnet-5-5",
 	} {
 		t.Run(model, func(t *testing.T) {
 			req := ChatRequest{
@@ -195,6 +196,48 @@ func TestAnthropicAdapterToRequest_SkipsTemperatureForClaude46AndNewer(t *testin
 	}
 	if body["temperature"] != 0.7 {
 		t.Errorf("sonnet 4.5 should keep temperature, got %v", body["temperature"])
+	}
+}
+
+func TestAnthropicAdapterToRequest_AdaptiveThinkingForSonnet55(t *testing.T) {
+	adapter, _ := NewAnthropicAdapter(ProviderConfig{APIKey: "sk-test"})
+
+	req := ChatRequest{
+		Model:    "claude-sonnet-5-5",
+		Messages: []Message{{Role: "user", Content: "Think about this"}},
+		Options: map[string]any{
+			OptThinkingLevel: "high",
+			OptTemperature:   0.7,
+		},
+	}
+	data, headers, err := adapter.ToRequest(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if headers.Get("anthropic-beta") != "" {
+		t.Errorf("adaptive thinking should not send anthropic-beta, got %q", headers.Get("anthropic-beta"))
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal(data, &body); err != nil {
+		t.Fatal(err)
+	}
+	thinking, ok := body["thinking"].(map[string]any)
+	if !ok {
+		t.Fatal("expected thinking config in body")
+	}
+	if thinking["type"] != "adaptive" {
+		t.Errorf("thinking type = %v, want adaptive", thinking["type"])
+	}
+	if _, hasBudget := thinking["budget_tokens"]; hasBudget {
+		t.Error("adaptive thinking should not set budget_tokens")
+	}
+	output, ok := body["output_config"].(map[string]any)
+	if !ok || output["effort"] != "high" {
+		t.Errorf("output_config = %v, want effort=high", body["output_config"])
+	}
+	if _, hasTemp := body["temperature"]; hasTemp {
+		t.Error("temperature should be omitted for claude-sonnet-5-5")
 	}
 }
 

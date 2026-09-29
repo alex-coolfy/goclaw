@@ -220,18 +220,27 @@ func (p *AnthropicProvider) buildRequestBody(model string, req ChatRequest, stre
 		}
 	}
 
-	// Enable extended thinking if thinking_level is set
+	// Enable extended thinking if thinking_level is set.
+	// Claude Opus 4.7+ and Claude 5 reject thinking.type=enabled. Those models
+	// take thinking.type=adaptive plus output_config.effort.
 	if level, ok := req.Options[OptThinkingLevel].(string); ok && level != "" && level != "off" {
-		budget := anthropicThinkingBudget(level)
-		body["thinking"] = map[string]any{
-			"type":          "enabled",
-			"budget_tokens": budget,
-		}
-		// Anthropic requires no temperature when thinking is enabled
 		delete(body, "temperature")
-		// Ensure max_tokens accommodates thinking budget + response
-		if maxTok, ok := body["max_tokens"].(int); !ok || maxTok < budget+4096 {
-			body["max_tokens"] = budget + 8192
+		if anthropicUsesAdaptiveThinking(model) {
+			body["thinking"] = map[string]any{"type": "adaptive"}
+			body["output_config"] = map[string]any{"effort": anthropicEffort(level)}
+			if maxTok, ok := body["max_tokens"].(int); !ok || maxTok < 16000 {
+				body["max_tokens"] = 16000
+			}
+		} else {
+			budget := anthropicThinkingBudget(level)
+			body["thinking"] = map[string]any{
+				"type":          "enabled",
+				"budget_tokens": budget,
+			}
+			// Ensure max_tokens accommodates thinking budget + response
+			if maxTok, ok := body["max_tokens"].(int); !ok || maxTok < budget+4096 {
+				body["max_tokens"] = budget + 8192
+			}
 		}
 	}
 
@@ -268,6 +277,59 @@ func anthropicSkipsTemperature(model string) bool {
 		}
 	}
 	return false
+}
+
+// anthropicUsesAdaptiveThinking reports models that reject thinking.type=enabled
+// and require thinking.type=adaptive. Opus 4.7+ and the Claude 5 family
+// (Sonnet 5, Opus 5, Fable, Mythos) return HTTP 400 for a manual budget.
+func anthropicUsesAdaptiveThinking(model string) bool {
+	m := strings.ToLower(model)
+	if strings.Contains(m, "claude-fable") || strings.Contains(m, "claude-mythos") {
+		return true
+	}
+	for _, family := range []string{"claude-opus-", "claude-sonnet-"} {
+		after, ok := strings.CutPrefix(m, family)
+		if !ok {
+			continue
+		}
+		majorPart, afterMajor, hasMinor := strings.Cut(after, "-")
+		major, err := strconv.Atoi(majorPart)
+		if err != nil {
+			continue
+		}
+		if major > 4 {
+			return true
+		}
+		if major != 4 || !hasMinor {
+			continue
+		}
+		minorPart, _, _ := strings.Cut(afterMajor, "-")
+		minor, err := strconv.Atoi(minorPart)
+		if err == nil && minor >= 7 {
+			return true
+		}
+	}
+	return false
+}
+
+// anthropicManualThinking reports whether the body uses legacy
+// thinking.type=enabled, which still needs the interleaved-thinking beta header.
+func anthropicManualThinking(body map[string]any) bool {
+	thinking, ok := body["thinking"].(map[string]any)
+	if !ok {
+		return false
+	}
+	typ, _ := thinking["type"].(string)
+	return typ == "enabled"
+}
+
+func anthropicEffort(level string) string {
+	switch level {
+	case "low", "medium", "high", "xhigh", "max":
+		return level
+	default:
+		return "high"
+	}
 }
 
 // anthropicThinkingBudget maps a thinking level to a token budget.
