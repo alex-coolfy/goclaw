@@ -132,14 +132,7 @@ func (p *AnthropicProvider) ChatStream(ctx context.Context, req ChatRequest, onC
 			var ev anthropicMessageDeltaEvent
 			if err := json.Unmarshal([]byte(data), &ev); err == nil {
 				if ev.Delta.StopReason != "" {
-					switch ev.Delta.StopReason {
-					case "tool_use":
-						result.FinishReason = "tool_calls"
-					case "max_tokens":
-						result.FinishReason = "length"
-					default:
-						result.FinishReason = "stop"
-					}
+					result.FinishReason = anthropicFinishReason(ev.Delta.StopReason)
 				}
 				if ev.Usage.OutputTokens > 0 {
 					if result.Usage == nil {
@@ -191,6 +184,7 @@ func (p *AnthropicProvider) ChatStream(ctx context.Context, req ChatRequest, onC
 	}
 
 	result.ThinkingSignature = thinkingSignature.String()
+	applyAnthropicRefusalNotice(result)
 
 	if onChunk != nil {
 		onChunk(StreamChunk{Done: true})

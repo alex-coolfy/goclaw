@@ -85,7 +85,7 @@ type ChatResponse struct {
 	Content      string     `json:"content"`
 	Thinking     string     `json:"thinking,omitempty"`
 	ToolCalls    []ToolCall `json:"tool_calls,omitempty"`
-	FinishReason string     `json:"finish_reason"` // "stop", "tool_calls", "length"
+	FinishReason string     `json:"finish_reason"` // "stop", "tool_calls", "length", "content_filter"
 	Usage        *Usage     `json:"usage,omitempty"`
 
 	// Phase is Codex-specific (gpt-5.3-codex): "commentary" or "final_answer".
