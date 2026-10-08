@@ -237,14 +237,8 @@ func (p *AnthropicProvider) parseResponse(resp *anthropicResponse) *ChatResponse
 		}
 	}
 
-	switch resp.StopReason {
-	case "tool_use":
-		result.FinishReason = "tool_calls"
-	case "max_tokens":
-		result.FinishReason = "length"
-	default:
-		result.FinishReason = "stop"
-	}
+	result.FinishReason = anthropicFinishReason(resp.StopReason)
+	applyAnthropicRefusalNotice(result)
 
 	result.Usage = &Usage{
 		PromptTokens:        resp.Usage.InputTokens,
@@ -340,4 +334,32 @@ type anthropicErrorEvent struct {
 		Type    string `json:"type"`
 		Message string `json:"message"`
 	} `json:"error"`
+}
+
+// anthropicRefusalNotice is delivered when the model refuses and returns no text.
+const anthropicRefusalNotice = "The model declined to answer this request."
+
+// anthropicFinishReason maps an Anthropic stop_reason to a ChatResponse finish
+// reason. "refusal" (Claude Haiku 5+, no server-side fallback) maps to
+// "content_filter" so it is distinguishable from a normal end of turn.
+func anthropicFinishReason(stopReason string) string {
+	switch stopReason {
+	case "tool_use":
+		return "tool_calls"
+	case "max_tokens":
+		return "length"
+	case "refusal":
+		return "content_filter"
+	default:
+		return "stop"
+	}
+}
+
+// applyAnthropicRefusalNotice gives an empty refusal a visible message, so the
+// run does not end in an empty reply that downstream code renders as "...".
+// Partial text the model produced before refusing is left untouched.
+func applyAnthropicRefusalNotice(result *ChatResponse) {
+	if result.FinishReason == "content_filter" && strings.TrimSpace(result.Content) == "" && len(result.ToolCalls) == 0 {
+		result.Content = anthropicRefusalNotice
+	}
 }
