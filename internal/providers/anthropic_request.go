@@ -272,6 +272,9 @@ func (p *AnthropicProvider) buildRequestBody(model string, req ChatRequest, stre
 // temperature (and top_p/top_k) are included; omit them entirely.
 func anthropicSkipsTemperature(model string) bool {
 	m := strings.ToLower(model)
+	if anthropicIsHaiku5Plus(m) {
+		return true
+	}
 	for _, family := range []string{"claude-opus-", "claude-sonnet-"} {
 		after, ok := strings.CutPrefix(m, family)
 		if !ok {
@@ -304,6 +307,9 @@ func anthropicSkipsTemperature(model string) bool {
 // (Sonnet 5, Opus 5, Fable, Mythos) return HTTP 400 for a manual budget.
 func anthropicUsesAdaptiveThinking(model string) bool {
 	m := strings.ToLower(model)
+	if anthropicIsHaiku5Plus(m) {
+		return true
+	}
 	if strings.Contains(m, "claude-fable") || strings.Contains(m, "claude-mythos") {
 		return true
 	}
@@ -333,6 +339,21 @@ func anthropicUsesAdaptiveThinking(model string) bool {
 		}
 	}
 	return false
+}
+
+// anthropicIsHaiku5Plus reports Claude Haiku 5 and newer (claude-haiku-5-5,
+// claude-haiku-6, ...). Those models reject temperature/top_p/top_k and
+// thinking.type=enabled with HTTP 400. Haiku 4.5 (claude-haiku-4-5 and its
+// dated snapshot) and the legacy claude-3-5-haiku names do not match: they keep
+// sampling parameters and manual thinking. m must already be lower-case.
+func anthropicIsHaiku5Plus(m string) bool {
+	after, ok := strings.CutPrefix(m, "claude-haiku-")
+	if !ok {
+		return false
+	}
+	majorPart, _, _ := strings.Cut(after, "-")
+	major, err := strconv.Atoi(majorPart)
+	return err == nil && major >= 5
 }
 
 // anthropicManualThinking reports whether the body uses legacy
